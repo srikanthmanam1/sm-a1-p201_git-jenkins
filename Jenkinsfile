@@ -1,90 +1,102 @@
 pipeline {
     agent any
+    // ----------------- options --------------
     options {
+	// ----------------- Time Stamp --------------
         timestamps()
+
+	// -------- Day and number of builds to keep the build ------------
+        buildDiscarder(logRotator(daysToKeepStr: '14', numToKeepStr: '10'))
     }
+    // --------------- Parameters ----------------
+    parameters {
+    	string(name: 'BRANCH', defaultValue: 'main', description: 'Git branch to build')
+    }
+    // -------- Environment Variables ------------
+    environment {
+        APP_ENV = 'staging'
+        AWS_CREDENTIALS = credentials('aws-creds-id')
+	IMAGE_NAME = "my-app"
+        GIT_COMMIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+        DEPLOY_ENV = 'production'
+    }
+
     stages {
-        stage('Hello 1') {
-            input {
-                message "Should we continue?"
-                ok "Yes, we should."
-                submitter "alice,bob"
-                parameters {
-                string(name: 'PERSON', defaultValue: 'Mr Jenkins', description: 'Who should I say hello to?')
-                }
+
+    	// -------- Git Repo Check ------------
+    	// ----- Tells Jenkins to check out source code from ----
+    	// ---- SCM Source Control Management system configured in the job (e.g., Git).
+	stage('Checkout') {
+            steps {
+                checkout scm
             }
+
+        stage('Hello 1') {
             steps {
                 echo 'Hello World 1'
                  //sh 'sudo apt update' // Error
                  sh 'mkdir ex1'
                  sh 'ls -l'
                  //sh 'rm -r ex1'
-                 echo "Hello ${params.PERSON}"
+    		// -------- Environment Variables ------------
+		echo "Building ${IMAGE_NAME}:${GIT_COMMIT_SHORT}"
+                echo "Deploying to ${env.DEPLOY_ENV}"
             }
         }
         stage('Hello 2') {
-            input {
-                message "Should we continue?"
-                //ok "Yes, we should."
-                //submitter "alice,bob"
-                parameters {
-                text(name: 'BIOGRAPHY', defaultValue: '', description: 'Enter some information about the person')
-            	}            
-            }
             steps {
                 echo 'Hello World 2'
                 sh 'cd ex1'
                 sh 'echo "echo Hello World in 2" > 2.txt'
                 sh 'ls -l'
-                echo "Biography: ${params.BIOGRAPHY}"
+	        // ---- timeout: time for timeout (minutes, seconds, hours, etc.).-------
+		// ---- Specify how long code block can runs, exit after timeout---------
+		timeout(time: 30, unit: 'MINUTES') {
+		    sh './ex2.sh'
+		}
             }
         }
         stage('Hello 3') {
-            input {
-                message "Should we continue?"
-                //ok "Yes, we should."
-                //submitter "alice,bob"
-                parameters {
-                booleanParam(name: 'TOGGLE', defaultValue: true, description: 'Toggle this value')
-            	}            
-            }
             steps {
                 echo 'Hello World 3'
                 sh 'rm 2.txt'
                 sh 'ls -l'
-                echo "Toggle: ${params.TOGGLE}"
+                // ---- retry(3): max 3 times or success.-------    
+		retry(3) {
+		    sh './ex3.sh'
+		}
             }
         }
         stage('Hello 4') {
-            input {
-                message "Should we continue?"
-                //ok "Yes, we should."
-                //submitter "alice,bob"
-                parameters {
-                choice(name: 'CHOICE', choices: ['One', 'Two', 'Three'], description: 'Pick something')
-            	}            
-            }            
             steps {
                 echo 'Hello World 4'
                 sh 'rm -r ex1'
                 sh 'ls -l'
-                echo "Choice: ${params.CHOICE}"
+    		// --------------- Parameters ----------------    
+		echo "Building branch ${params.BRANCH}"
             }
         }
         stage('Hello 5') {
-            input {
-                message "Should we continue?"
-                //ok "Yes, we should."
-                //submitter "alice,bob"
-                parameters {
-                password(name: 'PASSWORD', defaultValue: 'SECRET', description: 'Enter a password')
-            	}            
-            }            
             steps {
                 echo 'Hello World 5'
                 sh 'ls -l'
-                echo "Password: ${params.PASSWORD}"
             }
+        }
+    }
+    // ------- Ending message of pipeline build ------
+    post {
+        success {
+            echo 'Build succeeded!'
+	    echo "Build and deployment succeeded for ${IMAGE_NAME}:${GIT_COMMIT_SHORT}"
+        }
+        failure {
+            echo 'Build failed!'
+            echo "Build failed for ${IMAGE_NAME}:${GIT_COMMIT_SHORT}"
+        }
+	// ----- Always cleans up the workspace ------------
+	// ----- delete files from workspace directory -----
+	always {
+            cleanWs()
         }
     }
 }
